@@ -153,6 +153,17 @@ function Voice:_plan(text, opts, cfg)
     }
 end
 
+--- Playback rate for cloud audio: the configured `playback_speed` times the
+-- per-request factor (used by "Speak slowly"), so slowing down stays slower
+-- whatever the base rate.  Clamped to the range the players can handle.
+function Voice:_playbackSpeed(cfg, opts)
+    local base = tonumber(cfg.playback_speed) or 1.0
+    local factor = tonumber(opts and opts.speed) or 1.0
+    local speed = base * factor
+    if speed < 0.5 then speed = 0.5 elseif speed > 2.0 then speed = 2.0 end
+    return speed
+end
+
 --- Make sure the audio file for `plan` exists; on_ready(ok, path_or_err).
 function Voice:_fetch(text, plan, cfg, on_ready)
     if AudioCache.has(plan.path) then
@@ -308,7 +319,7 @@ function Voice:_speak(text, opts, on_done, internal)
         if gen ~= self._gen then return end
         if not ok then return done(false, path_or_err) end
         self:_setState("playing")
-        self:_player():play(path_or_err, done)
+        self:_player():play(path_or_err, done, { speed = self:_playbackSpeed(cfg, opts) })
         started()
         if internal.on_ready then internal.on_ready() end
     end)

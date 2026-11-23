@@ -14,9 +14,10 @@ local Voice = require("voicecompanion/voice")
 local PCM = string.rep("\1\2", 200)
 
 local function fakePlayer()
-    local player = { played = {}, stopped = 0 }
-    function player:play(path, cb)
+    local player = { played = {}, speeds = {}, stopped = 0 }
+    function player:play(path, cb, opts)
         table.insert(self.played, path)
+        table.insert(self.speeds, opts and opts.speed)
         UIManager:scheduleIn(0, function() cb(true) end)
     end
     function player:stop() self.stopped = self.stopped + 1 end
@@ -272,5 +273,44 @@ describe("Voice (cloud engine, fake player and network)", function()
         UIManager._drain()
         assert_eq(done, true)
         assert_eq(#voice.player.played, 2)
+    end)
+
+    local function setPlaybackSpeed(speed)
+        local f = assert(io.open(Config.file, "w"))
+        f:write('return { providers = { openrouter = { api_key = "sk-test" } }, playback_speed = '
+            .. tostring(speed) .. " }")
+        f:close()
+    end
+
+    it("plays cloud audio at the configured playback speed", function()
+        setPlaybackSpeed(1.5)
+        local voice = newVoice()
+        voice:speak("Hello", { engine = "cloud" }, function() end)
+        UIManager._drain()
+        assert_eq(voice.player.speeds[1], 1.5)
+    end)
+
+    it("plays at normal speed when playback_speed is not set", function()
+        local voice = newVoice()
+        voice:speak("Hello", { engine = "cloud" }, function() end)
+        UIManager._drain()
+        assert_eq(voice.player.speeds[1], 1.0)
+    end)
+
+    it("keeps a slow request slower than the configured speed", function()
+        setPlaybackSpeed(1.5)
+        local voice = newVoice()
+        voice:speak("Hello", { engine = "cloud", speed = 0.7 }, function() end)
+        UIManager._drain()
+        local speed = voice.player.speeds[1]
+        assert_true(math.abs(speed - 1.05) < 1e-6, "got " .. tostring(speed))
+    end)
+
+    it("clamps the playback speed and ignores a bad setting", function()
+        local voice = newVoice()
+        assert_eq(voice:_playbackSpeed({ playback_speed = 4 }, {}), 2.0)
+        assert_eq(voice:_playbackSpeed({ playback_speed = 0.1 }, { speed = 0.5 }), 0.5)
+        assert_eq(voice:_playbackSpeed({ playback_speed = "fast" }, {}), 1.0)
+        assert_eq(voice:_playbackSpeed({}, { speed = 0.7 }), 0.7)
     end)
 end)

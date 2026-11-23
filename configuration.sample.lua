@@ -90,6 +90,13 @@ return {
     -- (the device's own text-to-speech; works offline, no cost).
     voice_engine = "cloud",
 
+    -- Playback rate for cloud audio: 1.0 = normal, 1.5 = half again as fast,
+    -- 2.0 = twice as fast.  The audio is time-stretched, so the pitch is
+    -- unchanged.  "Speak slowly" multiplies this, so it stays slower than
+    -- normal reading.  Android only for now: the desktop players run at
+    -- normal speed.
+    playback_speed = 1.0,
+
     -- Device voice settings.
     local_tts = {
         -- Language tag of the device voice: "en-US", "en-GB", "fr-FR", …

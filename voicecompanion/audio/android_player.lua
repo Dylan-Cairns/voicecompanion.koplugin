@@ -37,12 +37,29 @@ function AndroidPlayer:_release()
 end
 
 --- Play `path`; `on_done(ok, err)` fires when playback ends or fails.
-function AndroidPlayer:play(path, on_done)
+-- `opts.speed` is a playback rate (1.0 = normal); Android time-stretches the
+-- audio, so the pitch does not change.
+function AndroidPlayer:play(path, on_done, opts)
     self:_release()
     self._paused = false
+    local speed = tonumber(opts and opts.speed) or 1.0
     local ok, result = JNI.run(function(J)
         local mp = J:new("android/media/MediaPlayer", "()V")
         J:call(mp, "setDataSource", "(Ljava/lang/String;)V", path)
+        if speed ~= 1.0 then
+            -- Set the rate while the player is Initialized: after prepare the
+            -- same call also starts playback, and some devices only honour a
+            -- rate that was supplied before prepare.
+            local sok, serr = pcall(function()
+                local params = J:call(mp, "getPlaybackParams", "()Landroid/media/PlaybackParams;")
+                J:call(params, "setSpeed", "(F)Landroid/media/PlaybackParams;", speed)
+                J:call(mp, "setPlaybackParams",
+                    "(Landroid/media/PlaybackParams;)V", params)
+            end)
+            if not sok then
+                logger.warn("VoiceCompanion: playback speed not applied:", serr)
+            end
+        end
         J:call(mp, "prepare", "()V")
         local duration = J:call(mp, "getDuration", "()I")
         J:call(mp, "start", "()V")

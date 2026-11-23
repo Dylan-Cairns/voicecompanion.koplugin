@@ -39,6 +39,11 @@ Config.DEFAULTS = {
     },
     -- Voice used when a feature doesn't say otherwise: "cloud" or "local".
     voice_engine = "cloud",
+    -- Playback rate for cloud audio (1.0 = normal, 2.0 = twice as fast).
+    -- The audio is time-stretched, so the voice pitch is unchanged.  It
+    -- multiplies the per-request speed used by "Speak slowly".  Android only
+    -- for now: the desktop players always run at normal speed.
+    playback_speed = 1.0,
     local_tts = {
         -- BCP-47 language tag for the device voice, e.g. "en-US", "en-GB".
         language = "en-US",

@@ -73,6 +73,18 @@ local function current(field)
     return p[field]
 end
 
+local function choiceItem(path, value, label)
+    return {
+        text = label,
+        checked_func = function()
+            local node = Config.load()
+            for part in path:gmatch("[^%.]+") do node = type(node) == "table" and node[part] or nil end
+            return node == value
+        end,
+        callback = function() saveOrWarn(path, value) end,
+    }
+end
+
 function SettingsMenu.build()
     local items = {}
 
@@ -167,6 +179,21 @@ function SettingsMenu.build()
         title = _("PCM sample rate"), hint = "24000", kind = "number",
         description = _("Only used with pcm. Must match the model's output, or speech plays too fast or too slow (Kokoro, OpenAI and Gemini: 24000)."),
     }))
+
+    table.insert(items, {
+        text_func = function()
+            return T(_("Cloud speech speed: %1×"), string.format("%g", tonumber(Config.load().playback_speed) or 1.0))
+        end,
+        sub_item_table = {
+            choiceItem("playback_speed", 0.75, _("0.75× (slower)")),
+            choiceItem("playback_speed", 1.0, _("1.0× (normal)")),
+            choiceItem("playback_speed", 1.25, _("1.25×")),
+            choiceItem("playback_speed", 1.5, _("1.5×")),
+            choiceItem("playback_speed", 1.75, _("1.75×")),
+            choiceItem("playback_speed", 2.0, _("2.0× (fastest)")),
+        },
+    })
+
     table.insert(items, inputItem(function() return T(_("Chat model: %1"), tostring(current("chat_model"))) end,
         providerField("chat_model"), {
             title = _("Chat model"), hint = "google/gemini-3.8-flash",
@@ -190,18 +217,6 @@ function SettingsMenu.build()
         title = _("Device voice speed"), hint = "1.0", kind = "number",
     }))
     return items
-end
-
-local function choiceItem(path, value, label)
-    return {
-        text = label,
-        checked_func = function()
-            local node = Config.load()
-            for part in path:gmatch("[^%.]+") do node = type(node) == "table" and node[part] or nil end
-            return node == value
-        end,
-        callback = function() saveOrWarn(path, value) end,
-    }
 end
 
 function SettingsMenu.readAloudItems()
