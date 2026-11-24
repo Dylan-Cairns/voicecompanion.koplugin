@@ -58,7 +58,7 @@ Defaults:
 | Speech model | `hexgrad/kokoro-82m` (natural, 8 languages, about $0.62 per million characters) |
 | Voice | `af_heart` |
 | Chat model | `google/gemini-3.8-flash` |
-| Cloud speech speed | `1.0` (normal); 0.75–2.0 under Settings, Android only for now |
+| Cloud speech speed | `1.0` (normal); 0.75–2.0 under Settings. Applied during playback, not by the provider, so any model works; Android only for now |
 
 Changing a setting in the menu writes `configuration.lua` for you. The menu rewrites the whole file, so values are kept but your comments are lost. `configuration.lua` is git-ignored and never overwritten by updates.
 
@@ -115,6 +115,7 @@ Common issues:
 | `HTTP 400 … only supports response_format="pcm"` (e.g. Gemini TTS) | Settings → **Audio format → pcm**, and set a voice the model supports |
 | Cloud voice speaks too fast or slow | Only with `audio_format = "pcm"`: set `sample_rate` to match your model, or change **Settings → Cloud speech speed** |
 | Cloud speech speed does nothing | It is applied by Android's MediaPlayer; on Linux desktop audio plays at normal speed |
+| A model rejects `speed` | It is never sent: the provider is asked for normal-speed audio and the player changes the rate |
 | Device voice: "did not start" | Install or select a TTS engine in Android settings |
 | Android device voice can't pause | Android's speech engine has no pause, so pausing stops and resuming restarts the sentence |
 

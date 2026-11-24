@@ -9,6 +9,8 @@ The one place features go to make sound.
 
 Cloud voices: provider speech -> audio cache -> player.  Requests for the
 same audio are shared, so a prefetch and a later speak() cost one call.
+`speed` is a playback factor, not a request field: the provider is always
+asked for normal-speed audio and the player time-stretches it.
 Local voices: Android system TTS on Android; a command-line engine plus the
 player on Linux.
 --]]
@@ -129,7 +131,6 @@ function Voice:_plan(text, opts, cfg)
         if not LinuxPlayer.canPlayMp3() then format = "pcm" end
     end
     local voice = opts.voice or p.voice
-    local speed = opts.speed or 1.0
     local trim = format == "pcm" and cfg.trim_silence ~= false
     -- Settings that change the sound beyond the basic key.
     local extra = {}
@@ -146,16 +147,20 @@ function Voice:_plan(text, opts, cfg)
         provider = p,
         format = format,
         voice = voice,
-        speed = speed,
         trim = trim,
-        path = AudioCache.path({ provider = p.name, model = p.tts_model, voice = voice, speed = speed,
+        -- Always the provider's normal rate.  Playback speed is applied by the
+        -- player, so one cached file serves every speed, slowing down costs no
+        -- extra request, and providers that reject a speed field still work.
+        path = AudioCache.path({ provider = p.name, model = p.tts_model, voice = voice,
             format = format, text = text, extra = table.concat(extra, ";") }, format == "pcm" and "wav" or "mp3"),
     }
 end
 
 --- Playback rate for cloud audio: the configured `playback_speed` times the
 -- per-request factor (used by "Speak slowly"), so slowing down stays slower
--- whatever the base rate.  Clamped to the range the players can handle.
+-- whatever the base rate.  This is the only place the rate is applied: the
+-- provider is always asked for normal-speed audio.  Clamped to the range the
+-- players can time-stretch without failing.
 function Voice:_playbackSpeed(cfg, opts)
     local base = tonumber(cfg.playback_speed) or 1.0
     local factor = tonumber(opts and opts.speed) or 1.0
@@ -181,7 +186,7 @@ function Voice:_fetch(text, plan, cfg, on_ready)
     local timeout = cfg.timeout
     if plan.engine == "cloud" then
         local p, path = plan.provider, plan.path
-        local req = { voice = plan.voice, speed = plan.speed, format = plan.format, trim_silence = plan.trim }
+        local req = { voice = plan.voice, format = plan.format, trim_silence = plan.trim }
         local delay = Voice.RETRY_DELAY
         work = function()
             local ok, res = Provider.speech(p, text, path, req)

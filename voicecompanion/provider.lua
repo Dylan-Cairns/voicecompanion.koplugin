@@ -85,6 +85,10 @@ end
 --- Synthesize speech to `out_path`.
 -- @param opts table { voice, speed, format ("mp3"|"pcm"), model, extra = {},
 --   trim_silence (pcm only) }
+-- `speed` is passed through for callers that want the provider to change the
+-- rate.  Read-aloud leaves it unset: the player does the time-stretching, so
+-- the same audio works at every speed and models without speed control are
+-- not asked for it.
 -- @return boolean ok, string error_or_out_path
 function Provider.speech(p, text, out_path, opts)
     opts = opts or {}

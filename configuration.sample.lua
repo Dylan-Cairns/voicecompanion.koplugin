@@ -93,8 +93,9 @@ return {
     -- Playback rate for cloud audio: 1.0 = normal, 1.5 = half again as fast,
     -- 2.0 = twice as fast.  The audio is time-stretched, so the pitch is
     -- unchanged.  "Speak slowly" multiplies this, so it stays slower than
-    -- normal reading.  Android only for now: the desktop players run at
-    -- normal speed.
+    -- normal reading.  The provider is always asked for normal-speed audio,
+    -- so this works with every model and costs no extra request.  Android
+    -- only for now: the desktop players run at normal speed.
     playback_speed = 1.0,
 
     -- Device voice settings.
