@@ -97,8 +97,9 @@ end)
 
 -- A fake crengine document: xpointers encode character offsets, and one or
 -- more character ranges are inside anchors (or other inline elements).
-local function fake_document(text, spans)
+local function fake_document(text, spans, opts)
     spans = spans or {}
+    opts = opts or {}
     local base = "/body/DocFragment[1]/body/p[1]"
 
     local function offset(xp)
@@ -123,7 +124,14 @@ local function fake_document(text, spans)
 
     function doc:getTextFromXPointers(a, b)
         local x, y = offset(a), offset(b)
-        if not x or not y or y < x then return "" end
+        if not x or not y then return "" end
+        if x == y then
+            -- crengine can report a character for a zero-width range at an
+            -- element boundary.
+            if opts.quirk_equal_range then return text:sub(x + 1, x + 1) end
+            return ""
+        end
+        if y < x then return "" end
         return text:sub(x + 1, y)
     end
 
@@ -184,6 +192,11 @@ end
 
 local function span_of(text, label)
     local s = assert(text:find(label, 1, true))
+    return s - 1, s - 1 + #label
+end
+
+local function span_from(text, label, init)
+    local s = assert(text:find(label, init, true))
     return s - 1, s - 1 + #label
 end
 
@@ -251,5 +264,28 @@ describe("BookText.sentenceFrom with citations", function()
         local f = fixture("A claim [1] is here. Next.", "[1]")
         local s = BookText.sentenceAt(f.ui, f.doc:xp_at(0))
         assert_eq(s.text, "A claim [1] is here.")
+    end)
+
+    it("drops a label that starts the sentence, even when an empty range reports text", function()
+        -- A paragraph of nothing but citations (the device showed this for
+        -- vault-reader source lists) must speak nothing, not the label's
+        -- first letter.
+        local label = "Nkrumah, 1965, Introduction"
+        local text = label .. " " .. label
+        local a1, a2 = span_from(text, label, 1)
+        local b1, b2 = span_from(text, label, a2 + 2)
+        local doc = fake_document(text, {
+            { from = a1, to = a2 },
+            { from = b1, to = b2 },
+        }, { quirk_equal_range = true })
+        local s = BookText.sentenceFrom({ document = doc }, doc:xp_at(0), { skip_citations = true })
+        assert_eq(s.text, "")
+
+        local text2 = "A claim [1] is here. Next."
+        local from, to = span_of(text2, "[1]")
+        local doc2 = fake_document(text2, { { from = from, to = to } },
+            { quirk_equal_range = true })
+        local s2 = BookText.sentenceFrom({ document = doc2 }, doc2:xp_at(0), { skip_citations = true })
+        assert_eq(s2.text, "A claim is here.")
     end)
 end)

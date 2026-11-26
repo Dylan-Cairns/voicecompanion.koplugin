@@ -315,7 +315,16 @@ function BookText.sentenceFrom(ui, ws, opts)
         end
         cur = nws
     end
+    -- crengine can return text for an empty range at an element boundary
+    -- (an xpointer to the first character of an inline element is also the
+    -- element's own xpointer), so empty ranges are dropped explicitly.
+    local function samePosition(a, b)
+        if a == b then return true end
+        local ok, cmp = pcall(doc.compareXPointers, doc, a, b)
+        return ok and cmp == 0 or false
+    end
     local function slice(a, b)
+        if samePosition(a, b) then return "" end
         return doc:getTextFromXPointers(a, b) or ""
     end
     local text
