@@ -122,9 +122,8 @@ end
 
 --- Read the book aloud from the sentence at (the word at) `xp`.
 function VoiceCompanion:readFrom(xp)
-    local BookText = require("voicecompanion/reader/booktext")
     self:interruptReading()
-    self:getReadAloud():start(BookText.sentenceAt(self.ui, xp))
+    self:getReadAloud():start(xp)
 end
 
 -- ── Text selection ─────────────────────────────────────────────────────

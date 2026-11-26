@@ -5,7 +5,7 @@ Hear what you read. Voice Companion is a [KOReader](https://github.com/koreader/
 - **Speak** any word or passage, normally or slowly.
 - **Pronunciation coach**: IPA, an easy respelling, syllables and stress, tips, and similar-sounding words, each with a play button. No microphone needed.
 - **Explain by voice**: explain a passage, define a word in context, translate, summarize the page, or ask your own question. The answer is shown and read aloud, and you can ask follow-ups.
-- **Read the book aloud** from the current page, a selection or a looked-up word. Sentences are sent in groups of about 300 characters (adjustable), the group being read is highlighted, the page turns as the reading reaches it, and you can pause, resume and stop.
+- **Read the book aloud** from the current page, a selection or a looked-up word. Sentences are sent in groups of about 300 characters (adjustable), the group being read is highlighted, the page turns as the reading reaches it, and you can pause, resume and stop. An optional **Skip citations when reading aloud** setting leaves citation and footnote labels out of the speech while keeping them visible and tappable on the page.
 
 It works with **any OpenAI-compatible API**, including [OpenRouter](https://openrouter.ai), OpenAI, Groq and self-hosted servers such as Kokoro-FastAPI. It can also use the **device's own text-to-speech** offline at no cost.
 

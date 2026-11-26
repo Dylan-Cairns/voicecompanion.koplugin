@@ -55,6 +55,44 @@ describe("ReadAloud.grouper", function()
     end)
 end)
 
+describe("ReadAloud:start citation filtering", function()
+    it("passes read_aloud.skip_citations to the sentence walker", function()
+        local Config = require("voicecompanion/config")
+        local old_load = Config.load
+        local old_first = BookText.firstSentenceOnPage
+        local old_next = BookText.nextSentence
+        local seen = {}
+        local ok, err = pcall(function()
+            Config.load = function()
+                return { read_aloud = {
+                    skip_citations = true, chunk_chars = 300, prefetch = 1, parallel = 1,
+                } }
+            end
+            BookText.firstSentenceOnPage = function(_, opts)
+                seen.first = opts
+                return { text = "First.", pos0 = 1, pos1 = 7, ends_block = true }
+            end
+            BookText.nextSentence = function(_, _, opts)
+                seen.next = opts
+                return nil
+            end
+            local voice = { speakSequence = function(_, get) seen.get = get end }
+            local plugin = {
+                ui = { rolling = {}, document = { getNextVisibleWordStart = function() end } },
+                getVoice = function() return voice end,
+            }
+            ReadAloud:new(plugin):start()
+            assert_eq(seen.first.skip_citations, true)
+            assert_eq(seen.get(1), "First.")
+            assert_eq(seen.next.skip_citations, true)
+        end)
+        Config.load = old_load
+        BookText.firstSentenceOnPage = old_first
+        BookText.nextSentence = old_next
+        if not ok then error(err, 0) end
+    end)
+end)
+
 describe("BookText.fractionBefore / viewEnd", function()
     -- A fake document whose xpointers are character offsets.
     local text = string.rep("a", 100)

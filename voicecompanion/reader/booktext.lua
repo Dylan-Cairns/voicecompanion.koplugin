@@ -131,11 +131,107 @@ function BookText.closingPunctuation(s)
     return table.concat(out)
 end
 
+-- ── Citations ──────────────────────────────────────────────────────────
+--
+-- vault-reader books mark evidence and footnote references with
+-- epub:type="noteref" / role="doc-noteref".  Those anchors are citation
+-- labels: they stay visible and tappable, but read-aloud can leave them out
+-- of the spoken text.
+
+-- The nearest enclosing <a> in an xpointer's element path, or nil.
+function BookText.anchorPath(xp)
+    local path = (xp or ""):gsub("/text%(%)[^/]*$", ""):gsub("%.%d+$", "")
+    local segments = {}
+    for segment in path:gmatch("[^/]+") do table.insert(segments, segment) end
+    for i = #segments, 1, -1 do
+        if segments[i]:match("^a%[%d+%]$") or segments[i] == "a" then
+            return "/" .. table.concat(segments, "/", 1, i)
+        end
+    end
+    return nil
+end
+
+local citation_cache = setmetatable({}, { __mode = "k" })
+
+--- Whether `xp` is inside an <a epub:type="noteref"> (or role
+-- doc-noteref).  Results are cached per document and anchor.
+function BookText.isCitationAnchor(ui, xp)
+    local anchor = BookText.anchorPath(xp)
+    local doc = ui and ui.document
+    if not anchor or not doc or type(doc.getHTMLFromXPointer) ~= "function" then
+        return false
+    end
+    local cache = citation_cache[doc]
+    if not cache then
+        cache = {}
+        citation_cache[doc] = cache
+    end
+    if cache[anchor] == nil then
+        local ok, html = pcall(doc.getHTMLFromXPointer, doc, anchor, 0x1001)
+        local found = false
+        if ok and type(html) == "string" then
+            local h = html:lower()
+            found = h:find("epub:type%s*=%s*['\"][^'\"]*noteref") ~= nil
+                or h:find("role%s*=%s*['\"][^'\"]*doc%-noteref") ~= nil
+        end
+        cache[anchor] = found
+    end
+    return cache[anchor]
+end
+
+-- compareXPointers(a, b) is 1 when b comes after a.
+local function isBefore(doc, a, b)
+    if a == b then return true end
+    local ok, cmp = pcall(doc.compareXPointers, doc, a, b)
+    return ok and cmp == 1 or false
+end
+
+local function isAfter(doc, a, b)
+    if a == b then return false end
+    local ok, cmp = pcall(doc.compareXPointers, doc, a, b)
+    return ok and cmp == -1 or false
+end
+
+-- Expand a word's position over the rest of the citation anchor's text.
+local function citationStart(doc, xp, anchor)
+    for _i = 1, 400 do
+        local ok, prev = pcall(doc.getPrevVisibleChar, doc, xp)
+        if not ok or not prev or prev == xp then break end
+        if BookText.anchorPath(prev) ~= anchor then break end
+        xp = prev
+    end
+    return xp
+end
+
+local function citationEnd(doc, xp, anchor)
+    for _i = 1, 400 do
+        if BookText.anchorPath(xp) ~= anchor then break end
+        local ok, nxt = pcall(doc.getNextVisibleChar, doc, xp)
+        if not ok or not nxt or nxt == xp then break end
+        xp = nxt
+    end
+    return xp
+end
+
+--- Tidy the gaps left by removed citation labels: empty brackets, a space
+-- before punctuation, or a separator at the start of the sentence.
+function BookText.cleanCitationGaps(text)
+    local t = text or ""
+    t = t:gsub("%(%s*%)", ""):gsub("%[%s*%]", ""):gsub("{%s*}", "")
+    t = t:gsub("%s+([,;:%.!%?])", "%1")
+    t = t:gsub("^[,;:]+%s*", "")
+    t = t:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+    return t
+end
+
 --- Build the sentence starting at word start `ws`.
+-- `opts.skip_citations` leaves citation labels out of `text`; the highlight
+-- (pos0..pos1) still covers them.  Sentence splitting also ignores them.
 -- @return { text, pos0, pos1, next_start } or nil
-function BookText.sentenceFrom(ui, ws)
+function BookText.sentenceFrom(ui, ws, opts)
     local doc = ui.document
     if not ws then return nil end
+    local skip_citations = opts and opts.skip_citations
     local pos0 = ws
     -- Include an opening quote or bracket right before the first word.
     local ok_p, prev = pcall(doc.getPrevVisibleChar, doc, ws)
@@ -152,25 +248,51 @@ function BookText.sentenceFrom(ui, ws)
     local trailing = ""
     local words = 0
     local cur = ws
+    local cuts = {}       -- ranges of citation anchors to leave out of `text`
+    local cut           -- the citation anchor being walked
+    local cut_anchor    -- its path
     while true do
         local ok_e, we = pcall(doc.getNextVisibleWordEnd, doc, cur)
         if not ok_e or not we then pos1 = cur break end
+
+        local anchor = skip_citations and BookText.anchorPath(cur) or nil
+        local citation = anchor and BookText.isCitationAnchor(ui, cur) or false
+        if citation then
+            if anchor ~= cut_anchor then
+                cut = { citationStart(doc, cur, anchor), citationEnd(doc, we, anchor) }
+                table.insert(cuts, cut)
+                cut_anchor = anchor
+            end
+        else
+            cut, cut_anchor = nil, nil
+        end
+
         local ok_s, nws = pcall(doc.getNextVisibleWordStart, doc, we)
-        words = words + 1
+        if not citation then words = words + 1 end
         if not ok_s or not nws or nws == cur then
             pos1 = we
             next_start = nil
             break
         end
         local chunk = doc:getTextFromXPointers(cur, nws) or ""
+        local split_chunk = chunk
+        if citation then
+            -- Ignore label text (including punctuation between its words)
+            -- when deciding where the sentence ends.
+            if BookText.anchorPath(nws) == anchor then
+                split_chunk = ""
+            else
+                split_chunk = doc:getTextFromXPointers(cut[2], nws) or ""
+            end
+        end
         local next_word
-        if chunk:find("[%.!%?]") or chunk:find("\226\128\166") then
+        if split_chunk:find("[%.!%?]") or split_chunk:find("\226\128\166") then
             local ok_n, nwe = pcall(doc.getNextVisibleWordEnd, doc, nws)
             next_word = ok_n and nwe and doc:getTextFromXPointers(nws, nwe) or nil
         end
         local new_block = BookText.blockPath(cur) ~= BookText.blockPath(nws)
-        if new_block or BookText.endsSentence(chunk, next_word) or words >= BookText.MAX_WORDS
-                or (words >= BookText.SOFT_WORDS and endsClause(chunk)) then
+        if new_block or BookText.endsSentence(split_chunk, next_word) or words >= BookText.MAX_WORDS
+                or (words >= BookText.SOFT_WORDS and endsClause(split_chunk)) then
             -- End right after the word's closing punctuation, so the
             -- highlight and the spoken text stop at the full stop, closing
             -- quote or comma (never on the next word or block).
@@ -188,14 +310,36 @@ function BookText.sentenceFrom(ui, ws)
                 end
             end
             next_start = nws
-            ends_block = new_block or chunk:find("\n") ~= nil
+            ends_block = new_block or split_chunk:find("\n") ~= nil
             break
         end
         cur = nws
     end
-    local text = (doc:getTextFromXPointers(pos0, pos1) or "") .. trailing
+    local function slice(a, b)
+        return doc:getTextFromXPointers(a, b) or ""
+    end
+    local text
+    if #cuts > 0 then
+        local parts = {}
+        local from = pos0
+        for _i, c in ipairs(cuts) do
+            local start, stop = c[1], c[2]
+            if isBefore(doc, start, pos0) then start = pos0 end
+            if isAfter(doc, start, pos1) then break end
+            if isAfter(doc, stop, pos1) then stop = pos1 end
+            table.insert(parts, slice(from, start))
+            from = stop
+        end
+        table.insert(parts, slice(from, pos1))
+        text = table.concat(parts)
+    else
+        text = slice(pos0, pos1)
+    end
+    text = text .. trailing
+    text = text:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+    if #cuts > 0 then text = BookText.cleanCitationGaps(text) end
     return {
-        text = (text:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")),
+        text = text,
         pos0 = pos0,
         pos1 = pos1,
         next_start = next_start,
@@ -204,20 +348,20 @@ function BookText.sentenceFrom(ui, ws)
 end
 
 --- The sentence starting at (the word containing) `xp`.
-function BookText.sentenceAt(ui, xp)
+function BookText.sentenceAt(ui, xp, opts)
     if not xp then return nil end
-    return BookText.sentenceFrom(ui, BookText.wordStart(ui, xp))
+    return BookText.sentenceFrom(ui, BookText.wordStart(ui, xp), opts)
 end
 
 --- The sentence after `sentence`, or nil at the end of the book.
-function BookText.nextSentence(ui, sentence)
+function BookText.nextSentence(ui, sentence, opts)
     if not sentence.next_start then return nil end
-    return BookText.sentenceFrom(ui, sentence.next_start)
+    return BookText.sentenceFrom(ui, sentence.next_start, opts)
 end
 
 --- First sentence at the top of the current page.
-function BookText.firstSentenceOnPage(ui)
-    return BookText.sentenceAt(ui, ui.document:getXPointer())
+function BookText.firstSentenceOnPage(ui, opts)
+    return BookText.sentenceAt(ui, ui.document:getXPointer(), opts)
 end
 
 function BookText.currentPage(ui)

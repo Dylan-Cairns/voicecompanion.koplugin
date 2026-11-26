@@ -76,6 +76,9 @@ Config.DEFAULTS = {
         prefetch = 2,
         -- Requests made at once while fetching ahead.
         parallel = 2,
+        -- Leave citation and footnote labels (vault-reader's noteref links)
+        -- out of the spoken text.  They stay visible and tappable.
+        skip_citations = false,
     },
     -- Cut the silence some models (Gemini TTS) add around each clip.
     -- pcm audio only.

@@ -248,6 +248,12 @@ function SettingsMenu.readAloudItems()
             callback = function() saveOrWarn("read_aloud.highlight", get("highlight") == false) end,
         },
         {
+            text = _("Skip citations when reading aloud"),
+            checked_func = function() return get("skip_citations") == true end,
+            callback = function() saveOrWarn("read_aloud.skip_citations", get("skip_citations") ~= true) end,
+            help_text = _("Leaves citation and footnote labels out of the spoken text. They stay visible on the page and can still be tapped."),
+        },
+        {
             text = _("Trim silence around AI audio (pcm)"),
             checked_func = function() return Config.load().trim_silence ~= false end,
             callback = function() saveOrWarn("trim_silence", Config.load().trim_silence == false) end,

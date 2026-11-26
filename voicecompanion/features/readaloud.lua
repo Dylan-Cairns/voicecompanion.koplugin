@@ -66,19 +66,25 @@ function ReadAloud.grouper(next_sentence, target)
     end
 end
 
---- Start reading at `first` (a sentence) or at the top of the current page.
+--- Start reading at `first` (a sentence or an xpointer) or at the top of the
+-- current page.
 function ReadAloud:start(first)
     local ui = self.ui
     if not BookText.isReflowable(ui) then
         UIManager:show(InfoMessage:new{ text = _("Reading aloud works with EPUB, FB2 and other reflowable books.") })
         return
     end
-    first = first or BookText.firstSentenceOnPage(ui)
+    local cfg = Config.load()
+    local opts = { skip_citations = cfg.read_aloud.skip_citations == true }
+    if type(first) == "string" then
+        first = BookText.sentenceAt(ui, first, opts)
+    elseif not first then
+        first = BookText.firstSentenceOnPage(ui, opts)
+    end
     if not first then
         UIManager:show(InfoMessage:new{ text = _("No text found on this page.") })
         return
     end
-    local cfg = Config.load()
     self.cfg = cfg
     self.list = {}
     self.state = "playing"
@@ -88,12 +94,12 @@ function ReadAloud:start(first)
     local last
     local function nextSentence()
         local s
-        if last == nil then s = first else s = BookText.nextSentence(ui, last) end
+        if last == nil then s = first else s = BookText.nextSentence(ui, last, opts) end
         local guard = 0
         while s and not speakable(s.text) do
             guard = guard + 1
             if guard > 50 then return nil end
-            s = BookText.nextSentence(ui, s)
+            s = BookText.nextSentence(ui, s, opts)
         end
         if not s then return nil end
         last = s

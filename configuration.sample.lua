@@ -134,6 +134,9 @@ return {
         chunk_chars = 300,
         prefetch = 2,              -- groups fetched ahead (cloud voices)
         parallel = 2,              -- requests at once while fetching ahead
+        -- Leave citation and footnote labels out of the spoken text.  They
+        -- stay visible on the page and can still be tapped.
+        skip_citations = false,
     },
 
     -- Cut the silence some models (Gemini TTS) add before and after each
