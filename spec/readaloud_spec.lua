@@ -25,33 +25,75 @@ describe("ReadAloud.grouper", function()
         assert_eq(groups[2].pos0, 20)
     end)
 
-    it("merges short sentences up to the size, spanning their positions", function()
-        local s = string.rep("x", 40) .. "."
-        local groups = drain(ReadAloud.grouper(walker({ s, s, s, s, s, s, s, s }), 100))
-        -- First group capped at FIRST_CHARS (120): three sentences (41+1+41+1+41 = 125).
-        assert_eq(#groups[1].text, 125)
+    it("fills a group up to the size without exceeding it", function()
+        local s = string.rep("x", 40) .. "."      -- 41 characters
+        local groups = drain(ReadAloud.grouper(walker({ s, s, s, s, s, s }), 100))
+        assert_eq(#groups, 3)                    -- two sentences each
+        assert_eq(#groups[1].text, 83)
         assert_eq(groups[1].pos0, 10)
-        assert_eq(groups[1].pos1, 35)
+        assert_eq(groups[1].pos1, 25, "spans both sentences")
         assert_eq(groups[1].first.pos0, 10)
-        assert_eq(groups[1].last.pos0, 30)
-        local n = 0
-        for _, g in ipairs(groups) do n = n + select(2, g.text:gsub("%.", "")) end
-        assert_eq(n, 8, "every sentence read once")
+        assert_eq(groups[1].last.pos0, 20)
     end)
 
     it("starts small, then grows to the configured size", function()
         local texts = {}
         for i = 1, 40 do texts[i] = string.rep("w", 29) .. "." end   -- 30 chars each
         local groups = drain(ReadAloud.grouper(walker(texts), 300))
-        assert_eq(#groups[1].text, 30 * 4 + 3)    -- reaches 120
-        assert_eq(#groups[2].text, 30 * 8 + 7)    -- reaches 240
-        assert_eq(#groups[3].text, 30 * 10 + 9)   -- reaches 300
+        assert_eq(#groups[1].text, 92)     -- three sentences (limit 120)
+        assert_eq(#groups[2].text, 216)    -- seven (limit 240)
+        assert_eq(#groups[3].text, 278)    -- nine (limit 300)
     end)
 
-    it("joins across a paragraph end with a newline", function()
-        local groups = drain(ReadAloud.grouper(walker({ "One.", "Two.", "Three." }, { true }), 300))
-        assert_eq(#groups, 1)
-        assert_eq(groups[1].text, "One.\nTwo. Three.")
+    it("ends a group at a paragraph end, not in the middle of the next one", function()
+        local s = string.rep("a", 29) .. "."      -- 30 characters
+        -- The second sentence ends a paragraph; the third opens the next.
+        local groups = drain(ReadAloud.grouper(walker({ s, s, s, s }, { false, true }), 300))
+        assert_eq(groups[1].text, s .. " " .. s)
+        assert_eq(groups[1].last.pos0, 20)
+        assert_eq(groups[1].pos1, 25)
+        assert_eq(groups[2].text, s .. " " .. s)
+        assert_eq(groups[2].pos0, 30)
+    end)
+
+    it("does not end a group at a break that leaves it mostly empty", function()
+        local heading = string.rep("h", 19) .. "."      -- 20 characters
+        local s = string.rep("a", 29) .. "."             -- 30 characters
+        -- A heading alone must not become a request of its own.
+        local groups = drain(ReadAloud.grouper(walker({ heading, s, s, s }, { true }), 300))
+        assert_eq(#groups[1].text, 20 + 3 * 31)
+        assert_eq(groups[1].text:sub(1, 20), heading)
+    end)
+
+    it("keeps a newline between paragraphs and ends at the last break", function()
+        local s = string.rep("a", 29) .. "."      -- 30 characters
+        local ends = { false, false, false, false, true, false, false, false, true }
+        local groups = drain(ReadAloud.grouper(walker({ s, s, s, s, s, s, s, s, s, s }, ends), 300))
+        assert_eq(#groups[1].text, 92)            -- three sentences
+        -- Group 2 runs to the second paragraph end and keeps the break.
+        assert_eq(#groups[2].text, 6 * 30 + 4 + 1)
+        assert_eq(groups[2].pos0, 40)
+        assert_eq(groups[2].pos1, 95)
+        local at = groups[2].text:find("\n", 1, true)
+        assert_eq(at, 62, "newline after the first paragraph of the group")
+        assert_eq(select(2, groups[2].text:gsub("\n", "\n")), 1)
+    end)
+
+    it("never exceeds the size, and keeps an over-long sentence whole", function()
+        local texts = {}
+        for i = 1, 20 do texts[i] = string.rep("z", 40) .. "." end
+        local groups = drain(ReadAloud.grouper(walker(texts), 200))
+        local read = 0
+        for _, g in ipairs(groups) do
+            assert_true(#g.text <= 200, "group of " .. #g.text .. " characters")
+            read = read + select(2, g.text:gsub("%.", ""))
+        end
+        assert_eq(read, 20, "every sentence read once")
+
+        local long = string.rep("q", 499) .. "."
+        local one = drain(ReadAloud.grouper(walker({ long }), 200))
+        assert_eq(#one, 1)
+        assert_eq(one[1].text, long)
     end)
 end)
 
@@ -90,6 +132,53 @@ describe("ReadAloud:start citation filtering", function()
         BookText.firstSentenceOnPage = old_first
         BookText.nextSentence = old_next
         if not ok then error(err, 0) end
+    end)
+end)
+
+describe("ReadAloud:start grouping", function()
+    it("ends a group where a skipped empty sentence ends the paragraph", function()
+        local Config = require("voicecompanion/config")
+        local old_load = Config.load
+        local old_first = BookText.firstSentenceOnPage
+        local old_next = BookText.nextSentence
+        local a = string.rep("a", 69) .. "."      -- 70 characters
+        local b = string.rep("b", 19) .. "."      -- 20 characters
+        local sentences = {
+            { text = a, pos0 = 1, pos1 = 71, ends_block = false },
+            { text = "", pos0 = 72, pos1 = 73, ends_block = true },   -- skipped label
+            { text = b, pos0 = 74, pos1 = 94, ends_block = false },
+            { text = b, pos0 = 95, pos1 = 115, ends_block = false },
+            { text = b, pos0 = 116, pos1 = 136, ends_block = false },
+        }
+        local out = {}
+        local ok, err = pcall(function()
+            Config.load = function()
+                return { read_aloud = { chunk_chars = 900, prefetch = 1, parallel = 1 } }
+            end
+            BookText.firstSentenceOnPage = function() return sentences[1] end
+            BookText.nextSentence = function(_, s)
+                for i, x in ipairs(sentences) do
+                    if x == s then return sentences[i + 1] end
+                end
+            end
+            local voice = {
+                speakSequence = function(_, get)
+                    out[1], out[2], out[3] = get(1), get(2), get(3)
+                end,
+            }
+            local plugin = {
+                ui = { rolling = {}, document = { getNextVisibleWordStart = function() end } },
+                getVoice = function() return voice end,
+            }
+            ReadAloud:new(plugin):start()
+        end)
+        Config.load = old_load
+        BookText.firstSentenceOnPage = old_first
+        BookText.nextSentence = old_next
+        if not ok then error(err, 0) end
+        assert_eq(out[1], a, "the paragraph ends before the skipped label")
+        assert_eq(out[2], b .. " " .. b .. " " .. b)
+        assert_nil(out[3])
     end)
 end)
 

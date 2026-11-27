@@ -224,14 +224,15 @@ function SettingsMenu.readAloudItems()
     return {
         {
             text_func = function()
-                local n = tonumber(get("chunk_chars")) or 300
-                return T(_("Text per request: %1"), n > 0 and T(_("~%1 characters"), n) or _("one sentence"))
+                local n = tonumber(get("chunk_chars")) or 900
+                return T(_("Text per request: %1"), n > 0 and T(_("up to ~%1 characters"), n) or _("one sentence"))
             end,
             sub_item_table = {
                 choiceItem("read_aloud.chunk_chars", 0, _("One sentence (highlight follows each sentence)")),
-                choiceItem("read_aloud.chunk_chars", 150, _("Short (~150 characters)")),
-                choiceItem("read_aloud.chunk_chars", 300, _("Medium (~300 characters)")),
-                choiceItem("read_aloud.chunk_chars", 500, _("Long (~500 characters)")),
+                choiceItem("read_aloud.chunk_chars", 300, _("Short (up to ~300 characters)")),
+                choiceItem("read_aloud.chunk_chars", 600, _("Medium (up to ~600 characters)")),
+                choiceItem("read_aloud.chunk_chars", 900, _("Long (up to ~900 characters), ends at paragraph breaks")),
+                choiceItem("read_aloud.chunk_chars", 1200, _("Very long (up to ~1200 characters)")),
             },
         },
         {

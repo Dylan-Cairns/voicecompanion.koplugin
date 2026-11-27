@@ -5,7 +5,7 @@ Hear what you read. Voice Companion is a [KOReader](https://github.com/koreader/
 - **Speak** any word or passage, normally or slowly.
 - **Pronunciation coach**: IPA, an easy respelling, syllables and stress, tips, and similar-sounding words, each with a play button. No microphone needed.
 - **Explain by voice**: explain a passage, define a word in context, translate, summarize the page, or ask your own question. The answer is shown and read aloud, and you can ask follow-ups.
-- **Read the book aloud** from the current page, a selection or a looked-up word. Sentences are sent in groups of about 300 characters (adjustable), the group being read is highlighted, the page turns as the reading reaches it, and you can pause, resume and stop. An optional **Skip citations when reading aloud** setting leaves citation and footnote labels out of the speech while keeping them visible and tappable on the page.
+- **Read the book aloud** from the current page, a selection or a looked-up word. Sentences are sent in groups of up to about 900 characters (adjustable), each group ending at a paragraph break when one fits so the voice rarely starts or stops mid-paragraph; the group being read is highlighted, the page turns as the reading reaches it, and you can pause, resume and stop. An optional **Skip citations when reading aloud** setting leaves citation and footnote labels out of the speech while keeping them visible and tappable on the page.
 
 It works with **any OpenAI-compatible API**, including [OpenRouter](https://openrouter.ai), OpenAI, Groq and self-hosted servers such as Kokoro-FastAPI. It can also use the **device's own text-to-speech** offline at no cost.
 
@@ -102,7 +102,7 @@ Audio is cached on the device (50 MB by default), so replaying a word or sentenc
 
 Each voice request's timing (request start, how long it took, playback start and end, and the gap between items) is written to `koreader/cache/voicecompanion/timing.log`. It helps when speech is slow to start or pauses between sentences.
 
-AI voices (Gemini TTS in particular) generate each request independently, so the tone can shift between requests. Larger groups under **Settings → Reading aloud → Text per request** reduce this; Kokoro keeps a steady voice even sentence by sentence.
+AI voices (Gemini TTS in particular) generate each request independently, so the tone can shift between requests. Larger groups under **Settings → Reading aloud → Text per request** reduce this; each group also ends at a paragraph break when one fits inside the limit, which keeps the narration from changing tone in the middle of a paragraph. Kokoro keeps a steady voice even sentence by sentence.
 
 Before each test starts, a line is written to `koreader/cache/voicecompanion/diagnostics.log`. If KOReader ever closes during a test, the Diagnostics menu shows **"⚠ Last run stopped during: …"** next time. Please include that in a bug report.
 

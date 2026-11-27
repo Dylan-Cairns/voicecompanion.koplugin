@@ -1,9 +1,11 @@
 --[[--
 Read the book aloud from the current page.  Sentences are grouped into
-requests of a few hundred characters (fewer requests, and a steadier voice
-from AI models that drift between requests); the group being read is
-highlighted, the page turns when the reading reaches the next page, and
-upcoming groups are fetched while one plays.  Reflowable documents only.
+requests of up to a few hundred characters (fewer requests, and a steadier
+voice from AI models that drift between requests); a group ends at the last
+paragraph (or other block) end inside the limit, so a request rarely starts
+or stops in the middle of a paragraph.  The group being read is highlighted,
+the page turns when the reading reaches the next page, and upcoming groups
+are fetched while one plays.  Reflowable documents only.
 --]]
 
 local Event = require("ui/event")
@@ -17,6 +19,10 @@ local ReadAloud = {
     -- The first groups are kept short so reading starts quickly, then
     -- grow to the configured size: group k is at most FIRST_CHARS * k.
     FIRST_CHARS = 120,
+    -- A group may only stop at a paragraph break once it holds at least
+    -- this much text (or half its limit, if that is less): headings and
+    -- one-line paragraphs would otherwise become requests of their own.
+    MIN_BLOCK_CHARS = 120,
     -- Reading speed used when the audio length is unknown (chars/second).
     CHARS_PER_SECOND = 15,
     FOLLOW_INTERVAL = 0.4,
@@ -39,30 +45,73 @@ local function clean(text)
     return (text:gsub("\194\173", ""):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
---- Group sentences into speakable items of about `target` characters.
+--- Group sentences into speakable items of at most `target` characters.
+-- A group ends at the last paragraph (or other block) end inside the limit,
+-- so that requests rarely start or stop in the middle of a paragraph; when
+-- the paragraph is longer than the limit, the group ends at a sentence.
 -- `next_sentence()` returns the next speakable sentence or nil.
 -- @return function() -> group|nil, where a group is
 --   { text, pos0, pos1, first (sentence), last (sentence) }
 function ReadAloud.grouper(next_sentence, target)
     local count = 0
+    local pending = {}   -- sentences pushed back for the next group
+
+    local function pull()
+        if pending[1] then return table.remove(pending, 1) end
+        return next_sentence()
+    end
+
     return function()
-        local s = next_sentence()
+        local s = pull()
         if not s then return nil end
+        if not target or target <= 0 then
+            -- One sentence per group.
+            return { text = s.text, pos0 = s.pos0, pos1 = s.pos1, first = s, last = s }
+        end
         count = count + 1
-        local limit = 0
-        if target and target > 0 then
-            limit = math.min(target, ReadAloud.FIRST_CHARS * count)
-        end
-        local group = { text = s.text, pos0 = s.pos0, pos1 = s.pos1, first = s, last = s }
-        while #group.text < limit do
-            local n = next_sentence()
+        local limit = math.min(target, ReadAloud.FIRST_CHARS * count)
+
+        local buf, plen = { s }, { #s.text }
+        local len = #s.text
+        while len < limit do
+            local n = pull()
             if not n then break end
-            -- A newline at a paragraph end makes voices pause as they should.
-            group.text = group.text .. (group.last.ends_block and "\n" or " ") .. n.text
-            group.pos1 = n.pos1
-            group.last = n
+            if len + 1 + #n.text > limit then
+                table.insert(pending, 1, n)
+                break
+            end
+            len = len + 1 + #n.text
+            buf[#buf + 1] = n
+            plen[#buf] = len
         end
-        return group
+
+        -- Stop at the last paragraph end in the group when there is one
+        -- late enough to be worth it.
+        local floor = math.min(limit / 2, ReadAloud.MIN_BLOCK_CHARS)
+        local cut = #buf
+        for i = #buf, 1, -1 do
+            if buf[i].ends_block and plen[i] >= floor then
+                cut = i
+                break
+            end
+        end
+        for i = #buf, cut + 1, -1 do
+            table.insert(pending, 1, buf[i])
+        end
+
+        local parts = {}
+        for i = 1, cut do
+            -- A newline at a paragraph end makes voices pause as they should.
+            if i > 1 then parts[#parts + 1] = buf[i - 1].ends_block and "\n" or " " end
+            parts[#parts + 1] = buf[i].text
+        end
+        return {
+            text = table.concat(parts),
+            pos0 = buf[1].pos0,
+            pos1 = buf[cut].pos1,
+            first = buf[1],
+            last = buf[cut],
+        }
     end
 end
 
@@ -92,6 +141,7 @@ function ReadAloud:start(first)
 
     -- Lazily walk the book; only speakable sentences are read.
     local last
+    local returned       -- the last sentence handed to the grouper
     local function nextSentence()
         local s
         if last == nil then s = first else s = BookText.nextSentence(ui, last, opts) end
@@ -99,14 +149,21 @@ function ReadAloud:start(first)
         while s and not speakable(s.text) do
             guard = guard + 1
             if guard > 50 then return nil end
+            -- An empty sentence (a skipped citation label) can still end a
+            -- paragraph; the paragraph ends after the sentence before it.
+            if s.ends_block and returned then returned.ends_block = true end
             s = BookText.nextSentence(ui, s, opts)
         end
-        if not s then return nil end
+        if not s then
+            if returned then returned.ends_block = true end
+            return nil
+        end
         last = s
         s.text = clean(s.text)
+        returned = s
         return s
     end
-    local nextGroup = ReadAloud.grouper(nextSentence, tonumber(cfg.read_aloud.chunk_chars) or 300)
+    local nextGroup = ReadAloud.grouper(nextSentence, tonumber(cfg.read_aloud.chunk_chars) or 900)
     local list = self.list
     local function get(i)
         while #list < i do

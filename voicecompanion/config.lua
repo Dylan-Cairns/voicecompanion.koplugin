@@ -67,11 +67,12 @@ Config.DEFAULTS = {
     read_aloud = {
         engine = "cloud",
         highlight = true,
-        -- Sentences are grouped into requests of about this many
-        -- characters (0 = one sentence per request).  Longer groups mean
-        -- fewer requests and a steadier AI voice; the whole group is
-        -- highlighted.
-        chunk_chars = 300,
+        -- Sentences are grouped into requests of up to this many characters
+        -- (0 = one sentence per request).  A group ends at the last
+        -- paragraph break that fits, so a request rarely stops mid-paragraph;
+        -- longer groups mean fewer requests and a steadier AI voice, and the
+        -- whole group is highlighted.
+        chunk_chars = 900,
         -- Groups fetched ahead while one is playing (cloud voices).
         prefetch = 2,
         -- Requests made at once while fetching ahead.
