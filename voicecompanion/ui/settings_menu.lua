@@ -231,7 +231,7 @@ function SettingsMenu.readAloudItems()
                 choiceItem("read_aloud.chunk_chars", 0, _("One sentence (highlight follows each sentence)")),
                 choiceItem("read_aloud.chunk_chars", 300, _("Short (up to ~300 characters)")),
                 choiceItem("read_aloud.chunk_chars", 600, _("Medium (up to ~600 characters)")),
-                choiceItem("read_aloud.chunk_chars", 900, _("Long (up to ~900 characters), ends at paragraph breaks")),
+                choiceItem("read_aloud.chunk_chars", 900, _("Long (up to ~900 characters)")),
                 choiceItem("read_aloud.chunk_chars", 1200, _("Very long (up to ~1200 characters)")),
             },
         },
